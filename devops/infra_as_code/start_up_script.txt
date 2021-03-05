@@ -1,0 +1,18 @@
+#! /bin/bash
+sudo su
+apt -y update
+apt -y upgrade
+apt -y install software-properties-common
+add-apt-repository -y ppa:deadsnakes/ppa
+apt -y install python3.7 python3.7-venv python3.7-dev
+adduser airflow --disabled-login --disabled-password --gecos "Airflow system user"
+cd /srv
+python3.7 -m venv airflow
+cd airflow
+source bin/activate
+# With an activated virtual environment
+pip install --upgrade pip
+pip install wheel
+pip install apache-airflow[postgres,crypto]==1.10.10
+chown airflow.airflow . -R
+chmod g+rwx . -R
