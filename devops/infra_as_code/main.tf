@@ -10,25 +10,24 @@ provider "google-beta" {
   zone    = var.zone
 }
 
-//data "google_service_account" "nissan_sa" {
-//  account_id = var.service_account
-//}
+data "google_service_account" "nissan_sa" {
+  account_id = var.service_account
+}
 
 resource "google_service_account" "airflow-sa" {
   account_id   = "airflow-sa"
   display_name = "Service Account"
 }
 
-resource "google_compute_subnetwork" "subnet" {
-  name          = "airflow-subnetwork"
-  ip_cidr_range = "10.0.0.0/8"
-  region        = var.region
-  network       = google_compute_network.airflow-network.id
+module network_config {
+  source = "./network_config"
+  region = var.region
 }
 
-resource "google_compute_network" "airflow-network" {
-  name                    = "airflow-network"
-  auto_create_subnetworks = false
+module postgres {
+  source = "./postgres"
+  region = var.region
+  network = module.network_config.airflow-network.id
 }
 
 resource "google_compute_instance" "airflow-vm" {
@@ -44,8 +43,8 @@ resource "google_compute_instance" "airflow-vm" {
   }
 
   network_interface {
-    network = google_compute_network.airflow-network.name
-    subnetwork = google_compute_subnetwork.subnet.name
+    network = module.network_config.airflow-network.name
+    subnetwork = module.network_config.airflow-subnet.name
 
     access_config {
       network_tier = "STANDARD"
@@ -59,42 +58,6 @@ resource "google_compute_instance" "airflow-vm" {
     email  = google_service_account.airflow-sa.email
     scopes = ["cloud-platform"]
   }
-}
-
-resource "google_compute_firewall" "ssh-access" {
-  name    = "allow-ssh-access"
-  network = google_compute_network.airflow-network.name
-  source_ranges = ["0.0.0.0/0"]
-
-  allow {
-    protocol = "tcp"
-    ports    = ["22"]
-  }
-
-}
-
-resource "google_compute_firewall" "airflow-network-allow-http" {
-  name    = "airflow-network-allow-http"
-  network = google_compute_network.airflow-network.name
-  source_ranges = ["0.0.0.0/0"]
-
-  allow {
-    protocol = "tcp"
-    ports    = ["80", "8080"]
-  }
-
-}
-
-resource "google_compute_firewall" "loadbalancer-access" {
-  name    = "loadbalancer-access"
-  network = google_compute_network.airflow-network.name
-  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
-
-  allow {
-    protocol = "tcp"
-    ports    = ["8080"]
-  }
-
 }
 
 resource "google_compute_instance_group" "airflow-instance-group" {
@@ -111,51 +74,6 @@ resource "google_compute_instance_group" "airflow-instance-group" {
   }
 
   zone = var.zone
-}
-
-resource "google_compute_global_address" "private_ip_address" {
-  provider = google-beta
-
-  name          = "private-ip-address"
-  purpose       = "VPC_PEERING"
-  address_type  = "INTERNAL"
-  prefix_length = 16
-  network       = google_compute_network.airflow-network.id
-}
-
-resource "google_service_networking_connection" "private_vpc_connection" {
-  provider = google-beta
-
-  network                 = google_compute_network.airflow-network.id
-  service                 = "servicenetworking.googleapis.com"
-  reserved_peering_ranges = [google_compute_global_address.private_ip_address.name]
-}
-
-resource "random_id" "db_name_suffix" {
-  byte_length = 4
-}
-
-resource "google_sql_database" "database" {
-  name     = "airflow"
-  instance = google_sql_database_instance.airflow-db.name
-}
-
-resource "google_sql_database_instance" "airflow-db" {
-  provider = google-beta
-
-  name   = "airflow-db"
-  database_version = "POSTGRES_11"
-  region = var.region
-
-  depends_on = [google_service_networking_connection.private_vpc_connection]
-
-  settings {
-    tier = "db-f1-micro"
-    ip_configuration {
-      ipv4_enabled    = false
-      private_network = google_compute_network.airflow-network.id
-    }
-  }
 }
 
 resource "google_compute_address" "airflow-static-ip" {

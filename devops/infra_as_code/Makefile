@@ -26,6 +26,6 @@ apply:
 	terraform apply ${VARIABLES}
 
 destroy:
-	terraform destroy ${VARIABLES}
+	terraform destroy ${VARIABLES} \
 
 .PHONY = all init plan apply destroy up down import az_up az_down
